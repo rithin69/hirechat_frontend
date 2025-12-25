@@ -21,6 +21,7 @@ jobs:
           node-version: '22.x'
 
       - name: npm install and build
+        shell: cmd
         run: |
           npm install
           npx vite build
