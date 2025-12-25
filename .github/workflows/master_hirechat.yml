@@ -26,11 +26,38 @@ jobs:
           npm install
           npx vite build
       
+      - name: List dist folder
+        shell: cmd
+        run: dir dist
+      
+      - name: Create web.config
+        shell: powershell
+        run: |
+          @"
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <system.webServer>
+              <rewrite>
+                <rules>
+                  <rule name="React Routes" stopProcessing="true">
+                    <match url=".*" />
+                    <conditions logicalGrouping="MatchAll">
+                      <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="true" />
+                      <add input="{REQUEST_FILENAME}" matchType="IsDirectory" negate="true" />
+                    </conditions>
+                    <action type="Rewrite" url="/index.html" />
+                  </rule>
+                </rules>
+              </rewrite>
+            </system.webServer>
+          </configuration>
+          "@ | Out-File -FilePath dist/web.config -Encoding utf8
+      
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: ./public
+          path: ./dist
 
   deploy:
     runs-on: ubuntu-latest
