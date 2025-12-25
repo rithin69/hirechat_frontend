@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     permissions:
       contents: read
 
@@ -21,8 +21,9 @@ jobs:
           node-version: '22.x'
 
       - name: npm install and build
+        shell: cmd
         run: |
-          npm install --legacy-peer-deps
+          npm install
           npx vite build
       
       - name: Upload artifact for deployment job
