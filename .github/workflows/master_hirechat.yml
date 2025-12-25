@@ -20,11 +20,17 @@ jobs:
         with:
           node-version: '22.x'
 
-      - name: npm install and build
+      - name: npm install
         shell: cmd
-        run: |
-          npm install
-          npx vite build
+        run: npm install
+      
+      - name: Check if vite exists
+        shell: cmd
+        run: dir node_modules\.bin
+      
+      - name: Build with full path
+        shell: cmd
+        run: node_modules\.bin\vite.cmd build
       
       - name: List dist folder
         shell: cmd
