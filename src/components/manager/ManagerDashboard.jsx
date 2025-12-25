@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../../hooks/useAuth";
-import ChatbotPanel from "./ChatbotPanel.jsx";
+// import ChatbotPanel from "./ChatbotPanel.jsx";
 
 const API_BASE = "http://127.0.0.1:8000"; // Change to Azure URL for production
 
