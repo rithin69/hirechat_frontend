@@ -8,11 +8,9 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     permissions:
       contents: read
-    env:
-      NODE_ENV: development
 
     steps:
       - uses: actions/checkout@v4
@@ -22,22 +20,14 @@ jobs:
         with:
           node-version: '22.x'
 
-      - name: npm install with dev dependencies
-        shell: cmd
-        run: npm install --production=false
-      
-      - name: Verify vite installed
-        shell: cmd
-        run: dir node_modules\.bin\vite*
-      
-      - name: Build
-        shell: cmd
-        run: node_modules\.bin\vite.cmd build
+      - name: npm install and build
+        run: |
+          npm install
+          npm run build
       
       - name: Create web.config
-        shell: powershell
         run: |
-          @"
+          cat > dist/web.config << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <configuration>
             <system.webServer>
@@ -55,7 +45,7 @@ jobs:
               </rewrite>
             </system.webServer>
           </configuration>
-          "@ | Out-File -FilePath dist/web.config -Encoding utf8
+          EOF
       
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
