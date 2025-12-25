@@ -261,9 +261,9 @@ const ManagerDashboard = () => {
           </div>
 
           {/* Right: Chatbot */}
-          <div className="lg:sticky lg:top-24 h-fit">
+          {/* <div className="lg:sticky lg:top-24 h-fit">
             <ChatbotPanel onJobCreated={fetchJobs} />
-          </div>
+          </div> */}
         </div>
       </div>
     </div>
