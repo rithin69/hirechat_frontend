@@ -22,8 +22,8 @@ jobs:
 
       - name: npm install and build
         run: |
-          npm ci --include=dev
-          npm run build
+          npm install --legacy-peer-deps
+          npx vite build
       
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
