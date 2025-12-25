@@ -132,7 +132,6 @@ export default function ManagerDashboard() {
     assistantEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [assistantMessages]);
 
-  // Fetch applicants when job is selected
   useEffect(() => {
     if (selectedJob) {
       setLoadingApplicants(true);
@@ -314,7 +313,7 @@ export default function ManagerDashboard() {
 
   return (
     <div className="space-y-6">
-      {/* Header stats */}
+  
       <div className="grid grid-cols-2 gap-4">
         <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
           <p className="text-xs text-slate-400">Active Jobs</p>
@@ -482,7 +481,7 @@ export default function ManagerDashboard() {
         )}
       </div>
 
-      {/* Job Details Modal with Applicants */}
+   
       {selectedJob && (
         <div
           className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 overflow-y-auto"
@@ -516,7 +515,7 @@ export default function ManagerDashboard() {
               <p className="text-sm text-slate-400">{selectedJob.description}</p>
             </div>
 
-            {/* Applicants Section */}
+           
             <div className="mb-4 border-t border-slate-800 pt-4">
               <h3 className="text-sm font-semibold text-slate-300 mb-3">
                 Applicants ({applicants.length})

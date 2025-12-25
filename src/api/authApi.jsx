@@ -1,7 +1,7 @@
 const API_BASE = "https://hirechatbackend-dycmdjfgdyhzhhfp.uksouth-01.azurewebsites.net";
 
 export async function loginUser({ email, password }) {
-  // Send as x-www-form-urlencoded for OAuth2PasswordRequestForm
+ 
   const body = new URLSearchParams();
   body.append("username", email);
   body.append("password", password);
@@ -11,7 +11,7 @@ export async function loginUser({ email, password }) {
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
     },
-    body, // IMPORTANT: not JSON.stringify
+    body, 
   });
 
   if (!res.ok) {
@@ -19,7 +19,7 @@ export async function loginUser({ email, password }) {
     throw new Error(err.detail || "Login failed");
   }
 
-  // { access_token, token_type }
+  
   return res.json();
 }
 
@@ -50,6 +50,6 @@ export async function fetchCurrentUser() {
 
   if (!res.ok) return null;
 
-  // { id, email, full_name, role, is_active }
+ 
   return res.json();
 }
