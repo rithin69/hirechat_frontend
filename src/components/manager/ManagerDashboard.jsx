@@ -332,7 +332,7 @@ export default function ManagerDashboard() {
         <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-5 shadow-sm shadow-black/30">
           <h2 className="mb-3 text-base font-semibold text-slate-50">AI Job Creator</h2>
           <p className="mb-3 text-xs text-slate-400">
-            ⚠️ This uses regex pattern matching, NOT OpenAI
+         
           </p>
           <div className="mb-4 h-96 space-y-3 overflow-y-auto rounded-lg bg-slate-950/50 p-4">
             {creatorMessages.map((msg) => (
@@ -386,7 +386,7 @@ export default function ManagerDashboard() {
         <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-5 shadow-sm shadow-black/30">
           <h2 className="mb-3 text-base font-semibold text-slate-50">Recruitment Assistant</h2>
           <p className="mb-3 text-xs text-slate-400">
-            ✅ Smart pattern-matching AI (no OpenAI needed)
+   
           </p>
           <div className="mb-4 h-96 space-y-3 overflow-y-auto rounded-lg bg-slate-950/50 p-4">
             {assistantMessages.map((msg) => (
