@@ -23,13 +23,13 @@ jobs:
       - name: npm install and build
         run: |
           npm install
-          npm run build
+          npx vite build
       
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: ./dist  # ✅ Only the build output
+          path: ./dist
 
   deploy:
     runs-on: ubuntu-latest
@@ -46,5 +46,5 @@ jobs:
         with:
           app-name: 'hirechat'
           slot-name: 'Production'
-          package: .  # ✅ Current directory (which is now dist/)
+          package: .
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_FE27BC2B11004521B13EDCEA76B58E80 }}
