@@ -26,15 +26,11 @@ jobs:
           npm install
           npx vite build
       
-      - name: List files after build
-        shell: cmd
-        run: dir
-      
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: .
+          path: ./public
 
   deploy:
     runs-on: ubuntu-latest
