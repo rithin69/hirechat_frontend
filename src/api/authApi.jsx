@@ -1,4 +1,4 @@
-const API_BASE = "https://hirechatbackend-dycmdjfgdyhzhhfp.uksouth-01.azurewebsites.net/";
+const API_BASE = "https://hirechatbackend-dycmdjfgdyhzhhfp.uksouth-01.azurewebsites.net";
 
 export async function loginUser({ email, password }) {
   // Send as x-www-form-urlencoded for OAuth2PasswordRequestForm
