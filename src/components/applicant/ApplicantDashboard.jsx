@@ -7,7 +7,7 @@ async function fetchJobs(token) {
   const res = await fetch(`${API_BASE}/jobs`, {
     headers: { Authorization: `Bearer ${token}` },  
   });
-  if (!res.ok) throw new Error("Failed to fetch jobs");
+  if (!res.ok) throw new Error("Failed to fetch job");
   return res.json();
 }
 
