@@ -3,32 +3,73 @@ import { useAuth } from "../../hooks/useAuth";
 
 const API_BASE = "https://hirechatbackend-dycmdjfgdyhzhhfp.uksouth-01.azurewebsites.net";
 
-// ... (keep all existing fetch functions)
-
-// NEW: Fetch AI analysis for an application
-async function fetchAIAnalysis(applicationId, token) {
-  const res = await fetch(`${API_BASE}/ai/application/${applicationId}/analysis`, {
+// Fetch all jobs
+async function fetchJobs(token) {
+  const res = await fetch(`${API_BASE}/jobs`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) return null;
+  if (!res.ok) throw new Error("Failed to fetch jobs");
   return res.json();
 }
 
-// NEW: Generate email draft
-async function generateEmailDraft(applicationId, emailType, token) {
-  const res = await fetch(`${API_BASE}/ai/generate-email`, {
+// Create a new job
+async function createJob(job, token) {
+  const res = await fetch(`${API_BASE}/jobs`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({
-      application_id: applicationId,
-      email_type: emailType,
-    }),
+    body: JSON.stringify(job),
   });
-  if (!res.ok) throw new Error("Failed to generate email");
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to create job");
+  }
   return res.json();
+}
+
+// Close a job
+async function closeJob(jobId, token) {
+  const res = await fetch(`${API_BASE}/jobs/${jobId}/close`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error("Failed to close job");
+  return res.json();
+}
+
+// Fetch applications for a job
+async function fetchApplicationsByJob(jobId, token) {
+  const res = await fetch(`${API_BASE}/jobs/${jobId}/applications`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error("Failed to fetch applications");
+  return res.json();
+}
+
+// Download CV
+async function downloadCV(applicationId, filename, token) {
+  try {
+    const response = await fetch(`${API_BASE}/applications/${applicationId}/cv`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      throw new Error("Failed to download CV");
+    }
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename || "cv.pdf";
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  } catch (error) {
+    console.error("Error downloading CV:", error);
+    alert("Failed to download CV");
+  }
 }
 
 export default function ManagerDashboard() {
@@ -39,58 +80,253 @@ export default function ManagerDashboard() {
   const [selectedJob, setSelectedJob] = useState(null);
   const [applicants, setApplicants] = useState([]);
   const [loadingApplicants, setLoadingApplicants] = useState(false);
-  
-  // NEW: AI-related state
-  const [selectedApplicant, setSelectedApplicant] = useState(null);
-  const [aiAnalysis, setAiAnalysis] = useState(null);
-  const [loadingAI, setLoadingAI] = useState(false);
-  const [emailDraft, setEmailDraft] = useState(null);
-  const [generatingEmail, setGeneratingEmail] = useState(false);
 
-  // ... (keep existing state for chat)
+  // Job Creator Chat State
+  const [creatorMessages, setCreatorMessages] = useState([
+    {
+      id: "welcome",
+      role: "assistant",
+      content:
+        '👋 Welcome! I can help you create job postings. Just describe the role.\n\nExample: "Create Senior React Developer in London £65-85k with description XYZ"',
+      timestamp: new Date(),
+    },
+  ]);
+  const [creatorInput, setCreatorInput] = useState("");
+  const [creatorTyping, setCreatorTyping] = useState(false);
+  const creatorEndRef = useRef(null);
+
+  // AI Recruitment Assistant State
+  const [assistantMessages, setAssistantMessages] = useState([
+    {
+      id: "welcome",
+      role: "assistant",
+      content:
+        '👋 I\'m your AI recruitment assistant. Ask me anything!\n\nExamples:\n• "Show me all open jobs"\n• "List applicants for Python Developer"\n• "How many applications do we have?"',
+      timestamp: new Date(),
+    },
+  ]);
+  const [assistantInput, setAssistantInput] = useState("");
+  const [assistantTyping, setAssistantTyping] = useState(false);
+  const assistantEndRef = useRef(null);
 
   const token = localStorage.getItem("access_token");
 
-  // ... (keep all existing useEffects)
+  // Load jobs on mount
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const data = await fetchJobs(token);
+        if (!cancelled) setJobs(data);
+      } catch (e) {
+        if (!cancelled) setError(e.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    if (token) load();
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
-  // NEW: Load AI analysis when applicant is selected
-  const handleViewApplicant = async (applicant) => {
-    setSelectedApplicant(applicant);
-    setAiAnalysis(null);
-    setEmailDraft(null);
-    setLoadingAI(true);
+  // Auto-scroll for creator chat
+  useEffect(() => {
+    creatorEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [creatorMessages]);
+
+  // Auto-scroll for assistant chat
+  useEffect(() => {
+    assistantEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [assistantMessages]);
+
+  // Load applicants when job is selected
+  useEffect(() => {
+    if (selectedJob) {
+      setLoadingApplicants(true);
+      fetchApplicationsByJob(selectedJob.id, token)
+        .then((data) => setApplicants(data))
+        .catch((e) => {
+          console.error("Failed to load applicants:", e);
+          setApplicants([]);
+        })
+        .finally(() => setLoadingApplicants(false));
+    } else {
+      setApplicants([]);
+    }
+  }, [selectedJob, token]);
+
+  // Add message to creator chat
+  const addCreatorMessage = (role, content) => {
+    setCreatorMessages((prev) => [
+      ...prev,
+      { id: Date.now().toString(), role, content, timestamp: new Date() },
+    ]);
+  };
+
+  // Add message to assistant chat
+  const addAssistantMessage = (role, content) => {
+    setAssistantMessages((prev) => [
+      ...prev,
+      { id: Date.now().toString(), role, content, timestamp: new Date() },
+    ]);
+  };
+
+  // Process job creation from natural language
+  const processJobCreation = async (message) => {
+    const lowerMsg = message.toLowerCase();
+    let title = "";
+    let description = "";
+
+    if (lowerMsg.includes("create ")) {
+      const afterCreate = message.split(/create\s+/i)[1] || "";
+      if (lowerMsg.includes("with description") || lowerMsg.includes("description")) {
+        const descMatch = message.match(/(?:with\s+)?description\s+(.+)/i);
+        if (descMatch) {
+          description = descMatch[1].trim();
+          const beforeDesc = message.split(/(?:with\s+)?description/i)[0];
+          const afterCreateClean = beforeDesc.split(/create\s+/i)[1] || "";
+          title =
+            afterCreateClean.split(/\s+(job|role|position|in|at|for|with|salary|£|\d)/i)[0]?.trim() || "";
+        }
+      } else {
+        title = afterCreate.split(/\s+(job|role|position|in|at|for|with|salary|£|\d)/i)[0]?.trim() || "";
+      }
+      title = title.replace(/^(a|an|the)\s+/i, "").trim();
+    }
+
+    if (title) {
+      title = title
+        .split(" ")
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(" ");
+    }
+
+    let location = "";
+    const locations = ["london", "remote", "hybrid", "manchester", "edinburgh"];
+    for (const loc of locations) {
+      if (lowerMsg.includes(loc)) {
+        location = loc.charAt(0).toUpperCase() + loc.slice(1);
+        break;
+      }
+    }
+
+    let salaryMin = 40000;
+    let salaryMax = 70000;
+    const salaryMatch = lowerMsg.match(
+      /£?(\d+(?:,\d+)?)(k?|000?)\s*(?:-|–|to)\s*£?(\d+(?:,\d+)?)(k?|000?)/i
+    );
+    if (salaryMatch) {
+      salaryMin =
+        parseInt(salaryMatch[1].replace(/,/g, "")) *
+        (salaryMatch[2].toLowerCase().includes("k") ? 1000 : 1);
+      salaryMax =
+        parseInt(salaryMatch[3].replace(/,/g, "")) *
+        (salaryMatch[4].toLowerCase().includes("k") ? 1000 : 1);
+    }
+
+    if (!description) {
+      description = `Looking for a ${title || "talented professional"}.`;
+    }
+
+    return { title, description, location, salary_min: salaryMin, salary_max: salaryMax };
+  };
+
+  // Handle job creator send
+  const handleCreatorSend = async () => {
+    if (!creatorInput.trim()) return;
+    const userMsg = creatorInput.trim();
+    addCreatorMessage("user", userMsg);
+    setCreatorInput("");
+    setCreatorTyping(true);
+
+    setTimeout(async () => {
+      const lowerMsg = userMsg.toLowerCase();
+      if (lowerMsg.includes("create") || lowerMsg.includes("hire") || lowerMsg.includes("post")) {
+        addCreatorMessage("assistant", "Got it! Creating a new job posting...");
+        try {
+          const jobData = await processJobCreation(userMsg);
+          if (!jobData.title) {
+            addCreatorMessage(
+              "assistant",
+              '❌ I couldn\'t extract the job title. Try:\n"Create [Job Title] in [Location] £[Min]-[Max]k"'
+            );
+            setCreatorTyping(false);
+            return;
+          }
+          const created = await createJob(jobData, token);
+          setJobs((prev) => [created, ...prev]);
+          addCreatorMessage(
+            "assistant",
+            `✅ Job created!\n\n**${created.title}**\n📍 ${created.location || "No location"} | 💰 £${created.salary_min}–£${created.salary_max}\n\n${created.description}`
+          );
+        } catch (e) {
+          addCreatorMessage("assistant", `❌ Failed: ${e.message}`);
+        }
+      } else {
+        addCreatorMessage(
+          "assistant",
+          'I only create jobs. Format:\n"Create [Job Title] in [Location] £[Min]-[Max]k"'
+        );
+      }
+      setCreatorTyping(false);
+    }, 1000);
+  };
+
+  // Handle assistant send
+  const handleAssistantSend = async () => {
+    if (!assistantInput.trim()) return;
+    const userMsg = assistantInput.trim();
+    addAssistantMessage("user", userMsg);
+    setAssistantInput("");
+    setAssistantTyping(true);
 
     try {
-      const analysis = await fetchAIAnalysis(applicant.id, token);
-      setAiAnalysis(analysis);
+      const res = await fetch(`${API_BASE}/chat/query`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          query: userMsg,
+          history: assistantMessages.map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to get response from AI agent");
+      }
+
+      const data = await res.json();
+      addAssistantMessage("assistant", data.answer);
     } catch (e) {
-      console.error("Failed to load AI analysis:", e);
+      addAssistantMessage("assistant", `❌ Error: ${e.message}`);
     } finally {
-      setLoadingAI(false);
+      setAssistantTyping(false);
     }
   };
 
-  // NEW: Generate email draft
-  const handleGenerateEmail = async (emailType) => {
-    if (!selectedApplicant) return;
-    
-    setGeneratingEmail(true);
+  // Handle close job
+  const handleCloseJob = async (jobId) => {
     try {
-      const draft = await generateEmailDraft(selectedApplicant.id, emailType, token);
-      setEmailDraft(draft);
+      const updated = await closeJob(jobId, token);
+      setJobs((prev) => prev.map((j) => (j.id === jobId ? updated : j)));
+      setSelectedJob(null);
     } catch (e) {
-      alert("Failed to generate email: " + e.message);
-    } finally {
-      setGeneratingEmail(false);
+      alert(`Failed to close job: ${e.message}`);
     }
   };
-
-  // ... (keep all existing handler functions)
 
   if (user?.role !== "hiring_manager") {
     return (
-      <div className="p-8">
-        <p className="text-red-500">You must be a hiring manager.</p>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <p className="text-xl text-red-600 font-semibold">You must be a hiring manager.</p>
+        </div>
       </div>
     );
   }
@@ -98,6 +334,7 @@ export default function ManagerDashboard() {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
+        {/* Header */}
         <h1 className="text-3xl font-bold text-gray-800 mb-2">Manager Dashboard</h1>
         <p className="text-gray-600 mb-6">Welcome back, {user?.full_name}</p>
 
@@ -120,8 +357,7 @@ export default function ManagerDashboard() {
         </div>
 
         {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           {/* Left: Job List */}
           <div className="lg:col-span-1 bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-semibold mb-4">Your Jobs</h2>
@@ -161,13 +397,21 @@ export default function ManagerDashboard() {
           </div>
 
           {/* Middle: Applicant List */}
-          <div className="lg:col-span-1 bg-white rounded-lg shadow p-6">
+          <div className="lg:col-span-2 bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-semibold mb-4">
               {selectedJob ? `Applicants for ${selectedJob.title}` : "Select a Job"}
             </h2>
-            
+
             {selectedJob ? (
               <>
+                <div className="mb-4 p-4 bg-gray-50 rounded">
+                  <p className="text-sm text-gray-600">
+                    {selectedJob.location || "No location"} • £{selectedJob.salary_min}–£
+                    {selectedJob.salary_max}
+                  </p>
+                  <p className="text-sm text-gray-700 mt-2">{selectedJob.description}</p>
+                </div>
+
                 {selectedJob.status === "closed" && (
                   <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
                     <p className="text-sm text-yellow-800">This job is closed</p>
@@ -179,17 +423,9 @@ export default function ManagerDashboard() {
                 ) : applicants.length === 0 ? (
                   <p className="text-gray-500">No applicants yet</p>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {applicants.map((app) => (
-                      <div
-                        key={app.id}
-                        onClick={() => handleViewApplicant(app)}
-                        className={`p-4 rounded border cursor-pointer transition ${
-                          selectedApplicant?.id === app.id
-                            ? "border-blue-500 bg-blue-50"
-                            : "border-gray-200 hover:border-blue-300"
-                        }`}
-                      >
+                      <div key={app.id} className="p-4 border border-gray-200 rounded">
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <h3 className="font-semibold text-gray-800">
@@ -199,39 +435,19 @@ export default function ManagerDashboard() {
                             <p className="text-xs text-gray-500 mt-1">
                               Applied: {new Date(app.created_at).toLocaleDateString()}
                             </p>
-                            
-                            {/* NEW: Show AI Score Badge */}
-                            {app.ai_score && (
-                              <div className="mt-2">
-                                <span
-                                  className={`inline-block px-2 py-1 text-xs rounded font-semibold ${
-                                    app.ai_score >= 80
-                                      ? "bg-green-100 text-green-700"
-                                      : app.ai_score >= 60
-                                      ? "bg-yellow-100 text-yellow-700"
-                                      : "bg-red-100 text-red-700"
-                                  }`}
-                                >
-                                  AI Score: {app.ai_score}/100
-                                </span>
-                                {app.ai_recommendation && (
-                                  <span className="ml-2 text-xs text-gray-600">
-                                    ({app.ai_recommendation})
-                                  </span>
-                                )}
-                              </div>
-                            )}
                           </div>
-                          
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              downloadCV(app.id, app.cv_filename, token);
-                            }}
-                            className="ml-2 px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded"
+                            onClick={() => downloadCV(app.id, app.cv_filename, token)}
+                            className="ml-4 px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
                           >
                             Download CV
                           </button>
+                        </div>
+                        <div className="mt-3">
+                          <p className="text-sm font-semibold text-gray-700">Cover Letter:</p>
+                          <p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap">
+                            {app.cover_letter}
+                          </p>
                         </div>
                       </div>
                     ))}
@@ -251,178 +467,106 @@ export default function ManagerDashboard() {
               <p className="text-gray-500">Select a job to view applicants</p>
             )}
           </div>
-
-          {/* Right: Applicant Details with AI Analysis */}
-          <div className="lg:col-span-1 bg-white rounded-lg shadow p-6 max-h-[800px] overflow-y-auto">
-            <h2 className="text-xl font-semibold mb-4">Applicant Details</h2>
-            
-            {selectedApplicant ? (
-              <div className="space-y-4">
-                {/* Applicant Info */}
-                <div>
-                  <h3 className="font-semibold text-lg">{selectedApplicant.applicant_name}</h3>
-                  <p className="text-sm text-gray-600">{selectedApplicant.applicant_email}</p>
-                </div>
-
-                {/* Cover Letter */}
-                <div>
-                  <h4 className="font-semibold text-sm text-gray-700 mb-2">Cover Letter</h4>
-                  <p className="text-sm text-gray-600 whitespace-pre-wrap bg-gray-50 p-3 rounded">
-                    {selectedApplicant.cover_letter}
-                  </p>
-                </div>
-
-                {/* NEW: AI Analysis Section */}
-                <div className="border-t pt-4">
-                  <h4 className="font-semibold text-sm text-gray-700 mb-3 flex items-center">
-                    <span className="mr-2">🤖</span>
-                    AI Analysis
-                  </h4>
-                  
-                  {loadingAI ? (
-                    <p className="text-sm text-gray-500">Analyzing...</p>
-                  ) : aiAnalysis && aiAnalysis.processed ? (
-                    <div className="space-y-3">
-                      {/* Score */}
-                      <div>
-                        <span className="text-xs text-gray-600">Match Score</span>
-                        <div className="flex items-center mt-1">
-                          <div className="flex-1 bg-gray-200 rounded-full h-2">
-                            <div
-                              className={`h-2 rounded-full ${
-                                aiAnalysis.score >= 80
-                                  ? "bg-green-500"
-                                  : aiAnalysis.score >= 60
-                                  ? "bg-yellow-500"
-                                  : "bg-red-500"
-                              }`}
-                              style={{ width: `${aiAnalysis.score}%` }}
-                            />
-                          </div>
-                          <span className="ml-3 text-sm font-semibold">{aiAnalysis.score}/100</span>
-                        </div>
-                      </div>
-
-                      {/* Recommendation */}
-                      <div>
-                        <span className="text-xs text-gray-600">Recommendation</span>
-                        <p className="mt-1">
-                          <span
-                            className={`inline-block px-3 py-1 text-sm rounded font-semibold ${
-                              aiAnalysis.recommendation === "shortlist"
-                                ? "bg-green-100 text-green-700"
-                                : aiAnalysis.recommendation === "review"
-                                ? "bg-yellow-100 text-yellow-700"
-                                : "bg-red-100 text-red-700"
-                            }`}
-                          >
-                            {aiAnalysis.recommendation?.toUpperCase()}
-                          </span>
-                        </p>
-                      </div>
-
-                      {/* Summary */}
-                      <div>
-                        <span className="text-xs text-gray-600">Summary</span>
-                        <p className="text-sm text-gray-700 mt-1">{aiAnalysis.summary}</p>
-                      </div>
-
-                      {/* Reasoning */}
-                      <div>
-                        <span className="text-xs text-gray-600">Reasoning</span>
-                        <p className="text-sm text-gray-700 mt-1">{aiAnalysis.reasoning}</p>
-                      </div>
-
-                      {/* Skills */}
-                      {aiAnalysis.skills && aiAnalysis.skills.length > 0 && (
-                        <div>
-                          <span className="text-xs text-gray-600">Extracted Skills</span>
-                          <div className="flex flex-wrap gap-2 mt-2">
-                            {aiAnalysis.skills.map((skill, idx) => (
-                              <span
-                                key={idx}
-                                className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded"
-                              >
-                                {skill}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-gray-500">No AI analysis available yet</p>
-                  )}
-                </div>
-
-                {/* NEW: Email Generator Section */}
-                <div className="border-t pt-4">
-                  <h4 className="font-semibold text-sm text-gray-700 mb-3">Generate Email</h4>
-                  
-                  <div className="flex gap-2 mb-4">
-                    <button
-                      onClick={() => handleGenerateEmail("shortlist")}
-                      disabled={generatingEmail}
-                      className="flex-1 px-3 py-2 text-sm bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50"
-                    >
-                      Shortlist
-                    </button>
-                    <button
-                      onClick={() => handleGenerateEmail("rejection")}
-                      disabled={generatingEmail}
-                      className="flex-1 px-3 py-2 text-sm bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50"
-                    >
-                      Reject
-                    </button>
-                    <button
-                      onClick={() => handleGenerateEmail("interview")}
-                      disabled={generatingEmail}
-                      className="flex-1 px-3 py-2 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
-                    >
-                      Interview
-                    </button>
-                  </div>
-
-                  {generatingEmail && (
-                    <p className="text-sm text-gray-500">Generating email draft...</p>
-                  )}
-
-                  {emailDraft && (
-                    <div className="bg-gray-50 p-4 rounded border">
-                      <h5 className="font-semibold text-sm mb-2">📧 Draft Email</h5>
-                      <div className="mb-3">
-                        <span className="text-xs text-gray-600">Subject:</span>
-                        <p className="text-sm font-semibold mt-1">{emailDraft.subject}</p>
-                      </div>
-                      <div>
-                        <span className="text-xs text-gray-600">Body:</span>
-                        <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">
-                          {emailDraft.body}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(
-                            `Subject: ${emailDraft.subject}\n\n${emailDraft.body}`
-                          );
-                          alert("Email copied to clipboard!");
-                        }}
-                        className="mt-3 w-full px-3 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded"
-                      >
-                        Copy to Clipboard
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <p className="text-gray-500">Select an applicant to view details</p>
-            )}
-          </div>
         </div>
 
-        {/* Keep your existing chat sections below */}
-        {/* ... */}
+        {/* Chat Interfaces */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Job Creator Chat */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-xl font-semibold mb-4">🤖 Job Creator Assistant</h2>
+            <div className="h-96 overflow-y-auto mb-4 border border-gray-200 rounded p-4 bg-gray-50">
+              {creatorMessages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`mb-4 ${msg.role === "user" ? "text-right" : "text-left"}`}
+                >
+                  <div
+                    className={`inline-block max-w-xs px-4 py-2 rounded-lg ${
+                      msg.role === "user"
+                        ? "bg-blue-500 text-white"
+                        : "bg-gray-200 text-gray-800"
+                    }`}
+                  >
+                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                  </div>
+                </div>
+              ))}
+              {creatorTyping && (
+                <div className="text-left mb-4">
+                  <div className="inline-block max-w-xs px-4 py-2 rounded-lg bg-gray-200 text-gray-800">
+                    <p className="text-sm">Typing...</p>
+                  </div>
+                </div>
+              )}
+              <div ref={creatorEndRef} />
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={creatorInput}
+                onChange={(e) => setCreatorInput(e.target.value)}
+                onKeyPress={(e) => e.key === "Enter" && handleCreatorSend()}
+                placeholder="Type your message..."
+                className="flex-1 px-4 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-500"
+              />
+              <button
+                onClick={handleCreatorSend}
+                disabled={creatorTyping || !creatorInput.trim()}
+                className="px-6 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+              >
+                Send
+              </button>
+            </div>
+          </div>
+
+          {/* AI Recruitment Assistant */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-xl font-semibold mb-4">💬 AI Recruitment Assistant</h2>
+            <div className="h-96 overflow-y-auto mb-4 border border-gray-200 rounded p-4 bg-gray-50">
+              {assistantMessages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`mb-4 ${msg.role === "user" ? "text-right" : "text-left"}`}
+                >
+                  <div
+                    className={`inline-block max-w-xs px-4 py-2 rounded-lg ${
+                      msg.role === "user"
+                        ? "bg-green-500 text-white"
+                        : "bg-gray-200 text-gray-800"
+                    }`}
+                  >
+                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                  </div>
+                </div>
+              ))}
+              {assistantTyping && (
+                <div className="text-left mb-4">
+                  <div className="inline-block max-w-xs px-4 py-2 rounded-lg bg-gray-200 text-gray-800">
+                    <p className="text-sm">Typing...</p>
+                  </div>
+                </div>
+              )}
+              <div ref={assistantEndRef} />
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={assistantInput}
+                onChange={(e) => setAssistantInput(e.target.value)}
+                onKeyPress={(e) => e.key === "Enter" && handleAssistantSend()}
+                placeholder="Ask me anything..."
+                className="flex-1 px-4 py-2 border border-gray-300 rounded focus:outline-none focus:border-green-500"
+              />
+              <button
+                onClick={handleAssistantSend}
+                disabled={assistantTyping || !assistantInput.trim()}
+                className="px-6 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50"
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
