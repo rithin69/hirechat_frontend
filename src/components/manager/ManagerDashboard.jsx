@@ -130,6 +130,7 @@ export default function ManagerDashboard() {
   const [emailDraft, setEmailDraft] = useState(null);
   const [generatingEmail, setGeneratingEmail] = useState(false);
   const [analyzingCV, setAnalyzingCV] = useState(false);
+  const [analyzingAppId, setAnalyzingAppId] = useState(null);
 
   // Job Creator Chat State
   const [creatorMessages, setCreatorMessages] = useState([
@@ -224,28 +225,68 @@ export default function ManagerDashboard() {
     }
   };
 
-  // NEW: Trigger AI analysis manually
+  // IMPROVED: Trigger AI analysis with auto-reload
   const handleAnalyzeCV = async (applicantId) => {
     setAnalyzingCV(true);
+    setAnalyzingAppId(applicantId);
+    
     try {
       await triggerAIAnalysis(applicantId, token);
-      alert("AI analysis started! Refresh in a few seconds to see results.");
-      // Reload applicants after a delay
-      setTimeout(() => {
-        if (selectedJob) {
-          fetchApplicationsByJob(selectedJob.id, token).then((data) => {
-            setApplicants(data);
-            // If this applicant is selected, reload their analysis
+      
+      console.log("AI analysis started for application:", applicantId);
+      
+      // Auto-reload every 2 seconds for up to 30 seconds
+      let attempts = 0;
+      const maxAttempts = 15; // 30 seconds total
+      
+      const checkInterval = setInterval(async () => {
+        attempts++;
+        
+        try {
+          // Reload applicants list
+          const updatedApplicants = await fetchApplicationsByJob(selectedJob.id, token);
+          setApplicants(updatedApplicants);
+          
+          // Find the current applicant in updated list
+          const updatedApplicant = updatedApplicants.find(a => a.id === applicantId);
+          
+          // Check if AI analysis is complete
+          if (updatedApplicant?.ai_score !== null && updatedApplicant?.ai_score !== undefined) {
+            // Analysis complete! Reload the AI details
+            const analysis = await fetchAIAnalysis(applicantId, token);
+            setAiAnalysis(analysis);
+            
+            // Update selected applicant if it's the current one
             if (selectedApplicant?.id === applicantId) {
-              fetchAIAnalysis(applicantId, token).then(setAiAnalysis);
+              setSelectedApplicant(updatedApplicant);
             }
-          });
+            
+            clearInterval(checkInterval);
+            setAnalyzingCV(false);
+            setAnalyzingAppId(null);
+            console.log("AI analysis complete!");
+          } else if (attempts >= maxAttempts) {
+            // Timeout after 30 seconds
+            clearInterval(checkInterval);
+            setAnalyzingCV(false);
+            setAnalyzingAppId(null);
+            alert("AI analysis is taking longer than expected. Please check back later or try again.");
+          }
+        } catch (error) {
+          console.error("Error checking AI status:", error);
+          // Continue trying unless we hit max attempts
+          if (attempts >= maxAttempts) {
+            clearInterval(checkInterval);
+            setAnalyzingCV(false);
+            setAnalyzingAppId(null);
+          }
         }
-      }, 3000);
+      }, 2000); // Check every 2 seconds
+      
     } catch (e) {
-      alert("Failed to analyze CV: " + e.message);
-    } finally {
+      alert("Failed to start AI analysis: " + e.message);
       setAnalyzingCV(false);
+      setAnalyzingAppId(null);
     }
   };
 
@@ -574,10 +615,16 @@ export default function ManagerDashboard() {
                                   e.stopPropagation();
                                   handleAnalyzeCV(app.id);
                                 }}
-                                disabled={analyzingCV}
-                                className="mt-2 text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded hover:bg-purple-200 disabled:opacity-50"
+                                disabled={analyzingCV && analyzingAppId === app.id}
+                                className="mt-2 text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded hover:bg-purple-200 disabled:opacity-50 flex items-center gap-1"
                               >
-                                {analyzingCV ? "Analyzing..." : "🤖 Analyze with AI"}
+                                {analyzingCV && analyzingAppId === app.id ? (
+                                  <>
+                                    <span className="animate-spin">⏳</span> Analyzing...
+                                  </>
+                                ) : (
+                                  "🤖 Analyze with AI"
+                                )}
                               </button>
                             )}
                           </div>
@@ -635,7 +682,7 @@ export default function ManagerDashboard() {
                   </h4>
 
                   {loadingAI ? (
-                    <p className="text-sm text-gray-500">Analyzing...</p>
+                    <p className="text-sm text-gray-500">Loading analysis...</p>
                   ) : aiAnalysis && aiAnalysis.processed ? (
                     <div className="space-y-3">
                       {/* Score */}
@@ -719,9 +766,15 @@ export default function ManagerDashboard() {
                       <button
                         onClick={() => handleAnalyzeCV(selectedApplicant.id)}
                         disabled={analyzingCV}
-                        className="w-full px-3 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 text-sm disabled:opacity-50"
+                        className="w-full px-3 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 text-sm disabled:opacity-50 flex items-center justify-center gap-2"
                       >
-                        {analyzingCV ? "Analyzing..." : "🤖 Run AI Analysis"}
+                        {analyzingCV && analyzingAppId === selectedApplicant.id ? (
+                          <>
+                            <span className="animate-spin">⏳</span> Analyzing...
+                          </>
+                        ) : (
+                          <>🤖 Run AI Analysis</>
+                        )}
                       </button>
                     </div>
                   )}
