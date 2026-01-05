@@ -507,7 +507,7 @@ export default function ManagerDashboard() {
                 onChange={(e) => setCreatorInput(e.target.value)}
                 onKeyPress={(e) => e.key === "Enter" && handleCreatorSend()}
                 placeholder="Type your message..."
-                className="flex-1 px-4 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-500"
+                className="flex-1 px-4 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-500 text-gray-900 bg-white"
               />
               <button
                 onClick={handleCreatorSend}
@@ -555,7 +555,7 @@ export default function ManagerDashboard() {
                 onChange={(e) => setAssistantInput(e.target.value)}
                 onKeyPress={(e) => e.key === "Enter" && handleAssistantSend()}
                 placeholder="Ask me anything..."
-                className="flex-1 px-4 py-2 border border-gray-300 rounded focus:outline-none focus:border-green-500"
+                className="flex-1 px-4 py-2 border border-gray-300 rounded focus:outline-none focus:border-green-500 text-gray-900 bg-white"
               />
               <button
                 onClick={handleAssistantSend}
