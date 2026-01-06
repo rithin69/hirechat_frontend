@@ -72,7 +72,7 @@ async function downloadCV(applicationId, filename, token) {
   }
 }
 
-// NEW: Fetch AI analysis for an application
+// Fetch AI analysis for an application
 async function fetchAIAnalysis(applicationId, token) {
   const res = await fetch(`${API_BASE}/ai/application/${applicationId}/analysis`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -81,7 +81,7 @@ async function fetchAIAnalysis(applicationId, token) {
   return res.json();
 }
 
-// NEW: Generate email draft
+// Generate email draft
 async function generateEmailDraft(applicationId, emailType, token) {
   const res = await fetch(`${API_BASE}/ai/generate-email`, {
     method: "POST",
@@ -98,7 +98,7 @@ async function generateEmailDraft(applicationId, emailType, token) {
   return res.json();
 }
 
-// NEW: Trigger AI analysis manually
+// Trigger AI analysis manually
 async function triggerAIAnalysis(applicationId, token) {
   const res = await fetch(`${API_BASE}/ai/analyze-application`, {
     method: "POST",
@@ -123,7 +123,7 @@ export default function ManagerDashboard() {
   const [applicants, setApplicants] = useState([]);
   const [loadingApplicants, setLoadingApplicants] = useState(false);
 
-  // NEW: AI-related state
+  // AI-related state
   const [selectedApplicant, setSelectedApplicant] = useState(null);
   const [aiAnalysis, setAiAnalysis] = useState(null);
   const [loadingAI, setLoadingAI] = useState(false);
@@ -160,24 +160,38 @@ export default function ManagerDashboard() {
   const [assistantTyping, setAssistantTyping] = useState(false);
   const assistantEndRef = useRef(null);
 
+  // Use ref to track mounted state for cleanup
+  const isMountedRef = useRef(true);
+
   const token = localStorage.getItem("access_token");
 
-  // Load jobs on mount
+  // Load jobs on mount with cleanup
   useEffect(() => {
-    let cancelled = false;
+    isMountedRef.current = true;
+    
     async function load() {
+      if (!token) return;
+      
       try {
         const data = await fetchJobs(token);
-        if (!cancelled) setJobs(data);
+        if (isMountedRef.current) {
+          setJobs(data);
+        }
       } catch (e) {
-        if (!cancelled) setError(e.message);
+        if (isMountedRef.current) {
+          setError(e.message);
+        }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (isMountedRef.current) {
+          setLoading(false);
+        }
       }
     }
-    if (token) load();
+    
+    load();
+    
     return () => {
-      cancelled = true;
+      isMountedRef.current = false;
     };
   }, [token]);
 
@@ -191,24 +205,41 @@ export default function ManagerDashboard() {
     assistantEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [assistantMessages]);
 
-  // Load applicants when job is selected
+  // Load applicants when job is selected with cleanup
   useEffect(() => {
-    if (selectedJob) {
+    let isCancelled = false;
+    
+    if (selectedJob && token) {
       setLoadingApplicants(true);
-      setSelectedApplicant(null); // Reset selected applicant
+      setSelectedApplicant(null);
+      
       fetchApplicationsByJob(selectedJob.id, token)
-        .then((data) => setApplicants(data))
+        .then((data) => {
+          if (!isCancelled && isMountedRef.current) {
+            setApplicants(data);
+          }
+        })
         .catch((e) => {
           console.error("Failed to load applicants:", e);
-          setApplicants([]);
+          if (!isCancelled && isMountedRef.current) {
+            setApplicants([]);
+          }
         })
-        .finally(() => setLoadingApplicants(false));
+        .finally(() => {
+          if (!isCancelled && isMountedRef.current) {
+            setLoadingApplicants(false);
+          }
+        });
     } else {
       setApplicants([]);
     }
+    
+    return () => {
+      isCancelled = true;
+    };
   }, [selectedJob, token]);
 
-  // NEW: Load AI analysis when applicant is selected
+  // Load AI analysis when applicant is selected with cleanup
   const handleViewApplicant = async (applicant) => {
     setSelectedApplicant(applicant);
     setAiAnalysis(null);
@@ -217,92 +248,129 @@ export default function ManagerDashboard() {
 
     try {
       const analysis = await fetchAIAnalysis(applicant.id, token);
-      setAiAnalysis(analysis);
+      if (isMountedRef.current) {
+        setAiAnalysis(analysis);
+      }
     } catch (e) {
       console.error("Failed to load AI analysis:", e);
     } finally {
-      setLoadingAI(false);
+      if (isMountedRef.current) {
+        setLoadingAI(false);
+      }
     }
   };
 
-  // IMPROVED: Trigger AI analysis with auto-reload
+  // Trigger AI analysis with auto-reload and cleanup
   const handleAnalyzeCV = async (applicantId) => {
+    if (!selectedJob || !token) return;
+    
     setAnalyzingCV(true);
     setAnalyzingAppId(applicantId);
     
     try {
       await triggerAIAnalysis(applicantId, token);
-      
       console.log("AI analysis started for application:", applicantId);
       
-      // Auto-reload every 2 seconds for up to 30 seconds
       let attempts = 0;
-      const maxAttempts = 15; // 30 seconds total
+      const maxAttempts = 15;
       
       const checkInterval = setInterval(async () => {
         attempts++;
         
         try {
-          // Reload applicants list
           const updatedApplicants = await fetchApplicationsByJob(selectedJob.id, token);
-          setApplicants(updatedApplicants);
           
-          // Find the current applicant in updated list
-          const updatedApplicant = updatedApplicants.find(a => a.id === applicantId);
-          
-          // Check if AI analysis is complete
-          if (updatedApplicant?.ai_score !== null && updatedApplicant?.ai_score !== undefined) {
-            // Analysis complete! Reload the AI details
-            const analysis = await fetchAIAnalysis(applicantId, token);
-            setAiAnalysis(analysis);
+          if (isMountedRef.current) {
+            setApplicants(updatedApplicants);
             
-            // Update selected applicant if it's the current one
-            if (selectedApplicant?.id === applicantId) {
-              setSelectedApplicant(updatedApplicant);
+            const updatedApplicant = updatedApplicants.find(a => a.id === applicantId);
+            
+            if (updatedApplicant?.ai_score !== null && updatedApplicant?.ai_score !== undefined) {
+              const analysis = await fetchAIAnalysis(applicantId, token);
+              
+              if (isMountedRef.current) {
+                setAiAnalysis(analysis);
+                
+                if (selectedApplicant?.id === applicantId) {
+                  setSelectedApplicant(updatedApplicant);
+                }
+                
+                setAnalyzingCV(false);
+                setAnalyzingAppId(null);
+              }
+              
+              clearInterval(checkInterval);
+              console.log("AI analysis complete!");
+            } else if (attempts >= maxAttempts) {
+              clearInterval(checkInterval);
+              if (isMountedRef.current) {
+                setAnalyzingCV(false);
+                setAnalyzingAppId(null);
+                alert("AI analysis is taking longer than expected. Please check back later or try again.");
+              }
             }
-            
+          } else {
             clearInterval(checkInterval);
-            setAnalyzingCV(false);
-            setAnalyzingAppId(null);
-            console.log("AI analysis complete!");
-          } else if (attempts >= maxAttempts) {
-            // Timeout after 30 seconds
-            clearInterval(checkInterval);
-            setAnalyzingCV(false);
-            setAnalyzingAppId(null);
-            alert("AI analysis is taking longer than expected. Please check back later or try again.");
           }
         } catch (error) {
           console.error("Error checking AI status:", error);
-          // Continue trying unless we hit max attempts
           if (attempts >= maxAttempts) {
             clearInterval(checkInterval);
-            setAnalyzingCV(false);
-            setAnalyzingAppId(null);
+            if (isMountedRef.current) {
+              setAnalyzingCV(false);
+              setAnalyzingAppId(null);
+            }
           }
         }
-      }, 2000); // Check every 2 seconds
+      }, 2000);
       
     } catch (e) {
-      alert("Failed to start AI analysis: " + e.message);
-      setAnalyzingCV(false);
-      setAnalyzingAppId(null);
+      if (isMountedRef.current) {
+        alert("Failed to start AI analysis: " + e.message);
+        setAnalyzingCV(false);
+        setAnalyzingAppId(null);
+      }
     }
   };
 
-  // NEW: Generate email draft
+  // Generate and send email
   const handleGenerateEmail = async (emailType) => {
-    if (!selectedApplicant) return;
+    if (!selectedApplicant || !token) return;
+
+    const emailTypeLabels = {
+      shortlist: "Shortlist",
+      rejection: "Rejection",
+      interview: "Interview Invitation"
+    };
+    
+    const confirmed = window.confirm(
+      `Send ${emailTypeLabels[emailType]} email to ${selectedApplicant.applicant_name} (${selectedApplicant.applicant_email})?`
+    );
+    
+    if (!confirmed) return;
 
     setGeneratingEmail(true);
     setEmailDraft(null);
+    
     try {
       const draft = await generateEmailDraft(selectedApplicant.id, emailType, token);
-      setEmailDraft(draft);
+      
+      if (isMountedRef.current) {
+        if (draft.email_sent) {
+          alert(`✅ Email sent successfully to ${draft.recipient_email}!`);
+        } else {
+          alert(`⚠️ Failed to send email: ${draft.message || 'Unknown error'}`);
+        }
+        setEmailDraft(draft);
+      }
     } catch (e) {
-      alert("Failed to generate email: " + e.message);
+      if (isMountedRef.current) {
+        alert("❌ Failed to send email: " + e.message);
+      }
     } finally {
-      setGeneratingEmail(false);
+      if (isMountedRef.current) {
+        setGeneratingEmail(false);
+      }
     }
   };
 
@@ -384,7 +452,8 @@ export default function ManagerDashboard() {
 
   // Handle job creator send
   const handleCreatorSend = async () => {
-    if (!creatorInput.trim()) return;
+    if (!creatorInput.trim() || !token) return;
+    
     const userMsg = creatorInput.trim();
     addCreatorMessage("user", userMsg);
     setCreatorInput("");
@@ -401,17 +470,23 @@ export default function ManagerDashboard() {
               "assistant",
               '❌ I couldn\'t extract the job title. Try:\n"Create [Job Title] in [Location] £[Min]-[Max]k"'
             );
-            setCreatorTyping(false);
+            if (isMountedRef.current) {
+              setCreatorTyping(false);
+            }
             return;
           }
           const created = await createJob(jobData, token);
-          setJobs((prev) => [created, ...prev]);
-          addCreatorMessage(
-            "assistant",
-            `✅ Job created!\n\n**${created.title}**\n📍 ${created.location || "No location"} | 💰 £${created.salary_min}–£${created.salary_max}\n\n${created.description}`
-          );
+          if (isMountedRef.current) {
+            setJobs((prev) => [created, ...prev]);
+            addCreatorMessage(
+              "assistant",
+              `✅ Job created!\n\n**${created.title}**\n📍 ${created.location || "No location"} | 💰 £${created.salary_min}–£${created.salary_max}\n\n${created.description}`
+            );
+          }
         } catch (e) {
-          addCreatorMessage("assistant", `❌ Failed: ${e.message}`);
+          if (isMountedRef.current) {
+            addCreatorMessage("assistant", `❌ Failed: ${e.message}`);
+          }
         }
       } else {
         addCreatorMessage(
@@ -419,13 +494,16 @@ export default function ManagerDashboard() {
           'I only create jobs. Format:\n"Create [Job Title] in [Location] £[Min]-[Max]k"'
         );
       }
-      setCreatorTyping(false);
+      if (isMountedRef.current) {
+        setCreatorTyping(false);
+      }
     }, 1000);
   };
 
   // Handle assistant send
   const handleAssistantSend = async () => {
-    if (!assistantInput.trim()) return;
+    if (!assistantInput.trim() || !token) return;
+    
     const userMsg = assistantInput.trim();
     addAssistantMessage("user", userMsg);
     setAssistantInput("");
@@ -452,20 +530,30 @@ export default function ManagerDashboard() {
       }
 
       const data = await res.json();
-      addAssistantMessage("assistant", data.answer);
+      if (isMountedRef.current) {
+        addAssistantMessage("assistant", data.answer);
+      }
     } catch (e) {
-      addAssistantMessage("assistant", `❌ Error: ${e.message}`);
+      if (isMountedRef.current) {
+        addAssistantMessage("assistant", `❌ Error: ${e.message}`);
+      }
     } finally {
-      setAssistantTyping(false);
+      if (isMountedRef.current) {
+        setAssistantTyping(false);
+      }
     }
   };
 
   // Handle close job
   const handleCloseJob = async (jobId) => {
+    if (!token) return;
+    
     try {
       const updated = await closeJob(jobId, token);
-      setJobs((prev) => prev.map((j) => (j.id === jobId ? updated : j)));
-      setSelectedJob(null);
+      if (isMountedRef.current) {
+        setJobs((prev) => prev.map((j) => (j.id === jobId ? updated : j)));
+        setSelectedJob(null);
+      }
     } catch (e) {
       alert(`Failed to close job: ${e.message}`);
     }
@@ -809,12 +897,23 @@ export default function ManagerDashboard() {
                   </div>
 
                   {generatingEmail && (
-                    <p className="text-sm text-gray-500">Generating email draft...</p>
+                    <p className="text-sm text-gray-500">Generating and sending email...</p>
                   )}
 
                   {emailDraft && (
                     <div className="bg-gray-50 p-4 rounded border">
-                      <h5 className="font-semibold text-sm mb-2">📧 Draft Email</h5>
+                      <div className="flex items-center justify-between mb-2">
+                        <h5 className="font-semibold text-sm">📧 Email {emailDraft.email_sent ? 'Sent' : 'Draft'}</h5>
+                        {emailDraft.email_sent ? (
+                          <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded font-semibold">
+                            ✅ Sent to {emailDraft.recipient_email}
+                          </span>
+                        ) : (
+                          <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded font-semibold">
+                            ❌ Not Sent
+                          </span>
+                        )}
+                      </div>
                       <div className="mb-3">
                         <span className="text-xs text-gray-600">Subject:</span>
                         <p className="text-sm font-semibold mt-1">{emailDraft.subject}</p>
@@ -825,23 +924,17 @@ export default function ManagerDashboard() {
                           {emailDraft.body}
                         </p>
                       </div>
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(
-                            `Subject: ${emailDraft.subject}\n\n${emailDraft.body}`
-                          );
-                          alert("Email copied to clipboard!");
-                        }}
-                        className="mt-3 w-full px-3 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded"
-                      >
-                        📋 Copy to Clipboard
-                      </button>
+                      {emailDraft.message && (
+                        <p className="text-xs text-gray-500 mt-2">
+                          {emailDraft.message}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
               </div>
             ) : (
-              <p className="text-gray-500">Select an applicant to view details</p>
+              <p className="text-gray-500 text-sm">Select an applicant to view details</p>
             )}
           </div>
         </div>
