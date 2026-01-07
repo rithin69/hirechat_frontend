@@ -646,7 +646,7 @@ export default function ManagerDashboard() {
           <div className="rounded-lg bg-indigo-50 border border-indigo-100 px-4 py-3">
             <p className="font-semibold text-indigo-800">Step 1 – Pick a role</p>
             <p className="text-indigo-700">
-              Select a job on the left to see who applied.
+              Select a job on the left to see who applied or Create a Job using Job creator assistant below.
             </p>
           </div>
           <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3">
@@ -1071,7 +1071,7 @@ export default function ManagerDashboard() {
           {/* Job creator assistant */}
           <section className="bg-slate-900 text-slate-50 rounded-xl shadow-sm p-5 flex flex-col">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-indigo-200 mb-1">
-              AI tool
+              {/* Job creator assistant  */}
             </h2>
             <p className="text-lg font-semibold mb-2">Job creator assistant</p>
             <p className="mb-3 text-xs text-slate-300">
