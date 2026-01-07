@@ -149,76 +149,44 @@ export default function ApplicantDashboard() {
   };
 
   const handleAssistantSend = async () => {
-    if (!assistantInput.trim()) return;
-
+    if (!assistantInput.trim() || !token) return;
+  
     const userMsg = assistantInput.trim();
     addAssistantMessage("user", userMsg);
     setAssistantInput("");
     setAssistantTyping(true);
-
-    setTimeout(() => {
-      const lowerMsg = userMsg.toLowerCase();
-
-      // Simple pattern matching for applicant queries
-      if (lowerMsg.includes("remote") && lowerMsg.includes("job")) {
-        const remoteJobs = jobs.filter((j) =>
-          j.location.toLowerCase().includes("remote")
-        );
-        if (remoteJobs.length === 0) {
-          addAssistantMessage("assistant", "No remote jobs available right now.");
-        } else {
-          let response = `Found ${remoteJobs.length} remote job${
-            remoteJobs.length === 1 ? "" : "s"
-          }:\n\n`;
-          remoteJobs.forEach((job) => {
-            response += `• ${job.title} - £${job.salary_min}-£${job.salary_max}\n`;
-          });
-          addAssistantMessage("assistant", response);
-        }
-      } else if (lowerMsg.includes("highest") && lowerMsg.includes("pay")) {
-        if (jobs.length === 0) {
-          addAssistantMessage("assistant", "No jobs available yet.");
-        } else {
-          const highest = jobs.reduce((prev, current) =>
-            current.salary_max > prev.salary_max ? current : prev
-          );
-          addAssistantMessage(
-            "assistant",
-            `The highest paying role is:\n\n${highest.title}\n${highest.location} • £${highest.salary_min}-£${highest.salary_max}`
-          );
-        }
-      } else if (lowerMsg.includes("applied") || lowerMsg.includes("application")) {
-        if (myApplications.length === 0) {
-          addAssistantMessage(
-            "assistant",
-            "You haven't applied to any jobs yet."
-          );
-        } else {
-          let response = `You have applied to ${myApplications.length} job${
-            myApplications.length === 1 ? "" : "s"
-          }:\n\n`;
-          myApplications.forEach((app) => {
-            response += `• Job ID ${app.job_id} - Status: ${app.status}\n`;
-          });
-          addAssistantMessage("assistant", response);
-        }
-      } else if (lowerMsg.includes("how many") && lowerMsg.includes("job")) {
-        addAssistantMessage(
-          "assistant",
-          `There are currently ${jobs.length} job${
-            jobs.length === 1 ? "" : "s"
-          } available.`
-        );
-      } else {
-        addAssistantMessage(
-          "assistant",
-          "I can help you with:\n• Showing remote jobs\n• Finding the highest paying role\n• Checking your applications\n• Counting available jobs"
-        );
+  
+    try {
+      const res = await fetch(`${API_BASE}/chat/applicant-query`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          query: userMsg,
+          history: assistantMessages.map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
+        }),
+      });
+  
+      if (!res.ok) throw new Error("Failed to get response from AI assistant");
+  
+      const data = await res.json();
+      if (isMountedRef.current) {
+        addAssistantMessage("assistant", data.answer);
       }
-
+    } catch (e) {
+      if (isMountedRef.current) {
+        addAssistantMessage("assistant", `❌ Error: ${e.message}`);
+      }
+    } finally {
       if (isMountedRef.current) setAssistantTyping(false);
-    }, 700);
+    }
   };
+  
 
   const onSubmit = async (e) => {
     e.preventDefault();
