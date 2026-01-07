@@ -671,7 +671,7 @@ const handleCreatorSend = async () => {
               {/* <span className="font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full">
                 {managerName}
               </span> */}
-              . Manage roles, review applicants, and use AI to decide next steps.
+               Manage roles, review applicants, and use AI to decide next steps.
             </p>
           </div>
           <div className="flex gap-4">
