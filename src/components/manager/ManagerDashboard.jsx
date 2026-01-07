@@ -445,131 +445,149 @@ export default function ManagerDashboard() {
     ]);
   };
 
-  const processJobCreation = async (message) => {
-    const lowerMsg = message.toLowerCase();
-    let title = "";
-    let description = "";
+// Replace your existing processJobCreation + handleCreatorSend
+// with this improved version in ManagerDashboard.jsx
 
-    if (lowerMsg.includes("create ")) {
-      const afterCreate = message.split(/create\s+/i)[1] || "";
-      if (
-        lowerMsg.includes("with description") ||
-        lowerMsg.includes("description")
-      ) {
-        const descMatch = message.match(/(?:with\s+)?description\s+(.+)/i);
-        if (descMatch) {
-          description = descMatch[1].trim();
-          const beforeDesc = message.split(/(?:with\s+)?description/i)[0];
-          const afterCreateClean = beforeDesc.split(/create\s+/i)[1] || "";
-          title =
-            afterCreateClean.split(
-              /\s+(job|role|position|in|at|for|with|salary|£|\d)/i
-            )[0]?.trim() || "";
-        }
-      } else {
-        title =
-          afterCreate.split(
-            /\s+(job|role|position|in|at|for|with|salary|£|\d)/i
-          )[0]?.trim() || "";
-      }
-      title = title.replace(/^(a|an|the)\s+/i, "").trim();
+const processJobCreation = (message) => {
+  const original = message.trim();
+  const lowerMsg = original.toLowerCase();
+
+  // must clearly be a create intent, otherwise bail
+  const hasCreateVerb =
+    lowerMsg.includes("create ") ||
+    lowerMsg.includes("post ") ||
+    lowerMsg.includes("add ") ||
+    lowerMsg.startsWith("new ");
+
+  if (!hasCreateVerb) {
+    return { title: "", description: "", location: "", salary_min: 0, salary_max: 0 };
+  }
+
+  let working = original;
+
+  // strip leading verbs like "create", "please create", "can you create"
+  working = working.replace(/^please\s+/i, "");
+  working = working.replace(/^can you\s+/i, "");
+  working = working.replace(/^could you\s+/i, "");
+  working = working.replace(/^(create|post|add|new)\s+/i, "");
+
+  // at this point we expect something like "Senior React Developer in London £65-85k with description XYZ"
+  const lowerWorking = working.toLowerCase();
+
+  // grab description if present
+  let description = "";
+  let beforeDescription = working;
+  const descIdx = lowerWorking.indexOf("description");
+  if (descIdx !== -1) {
+    // everything after keyword "description" is description
+    const descPart = working.slice(descIdx + "description".length).trim();
+    if (descPart.startsWith(":")) {
+      description = descPart.slice(1).trim();
+    } else if (descPart.startsWith("-")) {
+      description = descPart.slice(1).trim();
+    } else {
+      description = descPart;
     }
+    beforeDescription = working.slice(0, descIdx).trim();
+  }
 
-    if (title) {
-      title = title
-        .split(" ")
-        .map(
-          (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
-        )
-        .join(" ");
+  // title + location + salary live in beforeDescription
+  let title = beforeDescription;
+
+  // cut off "for", "at", "with", etc. as noise after the title
+  title = title.split(/\b(in|at|for|with|based in)\b/i)[0].trim();
+
+  // title cleanup: remove leading determiners, ensure nice casing
+  title = title.replace(/^(a|an|the)\s+/i, "").trim();
+  title = title
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+
+  // location detection: simple list but tolerant
+  const locations = ["london", "remote", "hybrid", "manchester", "edinburgh"];
+  let location = "";
+  for (const loc of locations) {
+    if (lowerWorking.includes(loc)) {
+      location = loc.charAt(0).toUpperCase() + loc.slice(1);
+      break;
     }
+  }
 
-    let location = "";
-    const locations = ["london", "remote", "hybrid", "manchester", "edinburgh"];
-    for (const loc of locations) {
-      if (lowerMsg.includes(loc)) {
-        location = loc.charAt(0).toUpperCase() + loc.slice(1);
-        break;
-      }
-    }
+  // salary parsing: £50k-70k, 50k to 70k, 50000-70000, etc.
+  let salaryMin = 40000;
+  let salaryMax = 70000;
 
-    let salaryMin = 40000;
-    let salaryMax = 70000;
-    const salaryMatch = lowerMsg.match(
-      /£?(\d+(?:,\d+)?)(k?|000?)\s*(?:-|–|to)\s*£?(\d+(?:,\d+)?)(k?|000?)/i
-    );
-    if (salaryMatch) {
-      salaryMin =
-        parseInt(salaryMatch[1].replace(/,/g, "")) *
-        (salaryMatch[2].toLowerCase().includes("k") ? 1000 : 1);
-      salaryMax =
-        parseInt(salaryMatch[3].replace(/,/g, "")) *
-        (salaryMatch[4].toLowerCase().includes("k") ? 1000 : 1);
-    }
+  const salaryMatch = lowerWorking.match(
+    /£?\s*(\d+(?:,\d+)?)(k|000)?\s*(?:-|–|to)\s*£?\s*(\d+(?:,\d+)?)(k|000)?/i
+  );
+  if (salaryMatch) {
+    const parseNum = (val, suffix) => {
+      const base = parseInt(val.replace(/,/g, ""), 10);
+      if (!suffix) return base;
+      if (suffix.toLowerCase().includes("k")) return base * 1000;
+      if (suffix.includes("000")) return base; // already full number like 50000
+      return base;
+    };
+    salaryMin = parseNum(salaryMatch[1], salaryMatch[2]);
+    salaryMax = parseNum(salaryMatch[3], salaryMatch[4]);
+  }
 
-    if (!description) {
-      description = `Looking for a ${title || "talented professional"}.`;
-    }
+  if (!description) {
+    description = `Looking for a ${title || "talented professional"}.`;
+  }
 
-    return { title, description, location, salary_min: salaryMin, salary_max: salaryMax };
-  };
+  // if we still don't have a title, treat as failure
+  if (!title) {
+    return { title: "", description: "", location: "", salary_min: 0, salary_max: 0 };
+  }
 
-  const handleCreatorSend = async () => {
-    if (!creatorInput.trim() || !token) return;
+  return { title, description, location, salary_min: salaryMin, salary_max: salaryMax };
+};
 
-    const userMsg = creatorInput.trim();
-    addCreatorMessage("user", userMsg);
-    setCreatorInput("");
-    setCreatorTyping(true);
+const handleCreatorSend = async () => {
+  if (!creatorInput.trim() || !token) return;
 
-    setTimeout(async () => {
-      const lowerMsg = userMsg.toLowerCase();
-      if (
-        lowerMsg.includes("create") ||
-        lowerMsg.includes("hire") ||
-        lowerMsg.includes("post")
-      ) {
-        addCreatorMessage(
-          "assistant",
-          "Creating a new job from your description…"
-        );
-        try {
-          const jobData = await processJobCreation(userMsg);
-          if (!jobData.title) {
-            addCreatorMessage(
-              "assistant",
-              'I could not extract the job title.\nTry:\n“Create [Job Title] in [Location] £[Min]-[Max]k with description …”'
-            );
-            if (isMountedRef.current) setCreatorTyping(false);
-            return;
-          }
-          const created = await createJob(jobData, token);
-          if (isMountedRef.current) {
-            setJobs((prev) => [created, ...prev]);
-            addCreatorMessage(
-              "assistant",
-              `Job created:\n${created.title}\n${
-                created.location || "Location not set"
-              } • £${created.salary_min}–£${created.salary_max}`
-            );
-          }
-        } catch (e) {
-          if (isMountedRef.current) {
-            addCreatorMessage(
-              "assistant",
-              `Failed to create job: ${e.message}`
-            );
-          }
-        }
-      } else {
-        addCreatorMessage(
-          "assistant",
-          'Right now I only create jobs.\nExample:\n“Create Senior React Developer in London £65-85k with description …”'
-        );
-      }
+  const userMsg = creatorInput.trim();
+  addCreatorMessage("user", userMsg);
+  setCreatorInput("");
+  setCreatorTyping(true);
+
+  setTimeout(async () => {
+    const jobData = processJobCreation(userMsg);
+
+    // if we couldn't confidently parse a title, refuse and explain format
+    if (!jobData.title) {
+      addCreatorMessage(
+        "assistant",
+        'I only create jobs. Try something like:\n“Create Senior React Developer in London £65-85k with description React + TypeScript, remote friendly.”'
+      );
       if (isMountedRef.current) setCreatorTyping(false);
-    }, 700);
-  };
+      return;
+    }
+
+    try {
+      const created = await createJob(jobData, token);
+      if (isMountedRef.current) {
+        setJobs((prev) => [created, ...prev]);
+        addCreatorMessage(
+          "assistant",
+          `Job created:\n${created.title}\n${created.location || "Location not set"} • £${
+            created.salary_min
+          }–£${created.salary_max}`
+        );
+      }
+    } catch (e) {
+      if (isMountedRef.current) {
+        addCreatorMessage("assistant", `Failed to create job: ${e.message}`);
+      }
+    } finally {
+      if (isMountedRef.current) setCreatorTyping(false);
+    }
+  }, 500);
+};
+
 
   const handleAssistantSend = async () => {
     if (!assistantInput.trim() || !token) return;
