@@ -668,9 +668,9 @@ const handleCreatorSend = async () => {
             </h1>
             <p className="text-sm text-slate-600">
               Welcome back,
-              <span className="font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full">
+              {/* <span className="font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full">
                 {managerName}
-              </span>
+              </span> */}
               . Manage roles, review applicants, and use AI to decide next steps.
             </p>
           </div>
