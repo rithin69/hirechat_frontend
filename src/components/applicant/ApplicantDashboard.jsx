@@ -279,11 +279,11 @@ export default function ApplicantDashboard() {
               Job Search Dashboard
             </h1>
             <p className="text-sm text-slate-600">
-              Welcome back,{" "}
+              Welcome back,
               <span className="font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
                 {applicantName}
               </span>
-              . Find your next opportunity and track your applications.
+               Find your next opportunity and track your applications.
             </p>
           </div>
           <div className="flex gap-4">
