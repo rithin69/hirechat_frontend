@@ -755,6 +755,11 @@ const handleCreatorSend = async () => {
                       <p className="text-xs text-slate-600">
                         {job.location} • £{job.salary_min}–£{job.salary_max}
                       </p>
+                      {job.description && (
+      <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+        {job.description}
+      </p>
+    )}
                       <span
                         className={`mt-2 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
                           job.status === "open"
