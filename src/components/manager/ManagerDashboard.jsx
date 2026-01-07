@@ -649,7 +649,7 @@ export default function ManagerDashboard() {
               Hiring Workspace
             </h1>
             <p className="text-sm text-slate-600">
-              Welcome back,{" "}
+              Welcome back,
               <span className="font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full">
                 {managerName}
               </span>
